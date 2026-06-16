@@ -52,6 +52,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tradehook}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradehook}?schema=public
       REDIS_URL: redis://redis:6379
       API_PORT: 3001
+    ports:
+      # Host nginx / Caddy proxies to these (127.0.0.1 only — not public).
+      - '127.0.0.1:3001:3001'
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -84,10 +87,15 @@ services:
         NEXT_PUBLIC_DEV_MOCK_AUTH: ${NEXT_PUBLIC_DEV_MOCK_AUTH:-true}
     restart: unless-stopped
     env_file: .env
+    ports:
+      - '127.0.0.1:3000:3000'
     depends_on:
       - api
 
+  # Optional: only if ports 80/443 are free on the host.
+  # Hostinger VPS often has nginx on :80 — use deploy/nginx-hostinger.conf instead.
   caddy:
+    profiles: ['caddy']
     image: caddy:2-alpine
     restart: unless-stopped
     ports:

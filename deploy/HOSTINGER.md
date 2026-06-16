@@ -71,6 +71,30 @@ Mutlaka değiştir:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+> **Hostinger notu:** VPS'te genelde nginx zaten **80 portunu** kullanır. Bu yüzden Caddy varsayılan olarak **kapalı** (`profiles: caddy`). Aşağıdaki nginx adımını uygula.
+
+### HTTPS — mevcut nginx ile (önerilen)
+
+```bash
+# Başarısız caddy container varsa kaldır
+docker compose -f docker-compose.prod.yml rm -f caddy 2>/dev/null || true
+
+# nginx site config
+sudo cp deploy/nginx-hostinger.conf /etc/nginx/sites-available/tradehook
+sudo ln -sf /etc/nginx/sites-available/tradehook /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# SSL (Let's Encrypt)
+sudo certbot --nginx -d atikaiagents.cloud -d api.atikaiagents.cloud
+```
+
+### Alternatif — Caddy (80/443 boşsa)
+
+```bash
+sudo systemctl stop nginx
+docker compose -f docker-compose.prod.yml --profile caddy up -d --build
+```
+
 İlk build 5–15 dk sürebilir. Kontrol:
 
 ```bash
@@ -127,7 +151,8 @@ docker compose -f docker-compose.prod.yml run --rm migrate
 
 | Sorun | Çözüm |
 |-------|--------|
-| Site açılmıyor | DNS A kayıtları, `docker ps`, Caddy logları |
+| Site açılmıyor | DNS A kayıtları, `docker ps`, nginx/Caddy logları |
+| `port 80 already in use` | Caddy yerine nginx kullan (yukarıdaki adım) |
 | Webhook gelmiyor | `api` subdomain DNS, firewall 80/443 açık |
 | Emir kuyrukta kalıyor | `worker` container çalışıyor mu: `logs worker` |
 | SSL hatası | DNS henüz yayılmamış; 10 dk bekle |
