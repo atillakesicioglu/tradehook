@@ -1,0 +1,29 @@
+{
+  "name": "tradehook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TradingView-to-Binance trading automation SaaS (MVP)",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "build:packages": "pnpm --filter @tradehook/shared build && pnpm --filter @tradehook/database build",
+    "db:generate": "pnpm --filter @tradehook/database generate",
+    "db:migrate": "pnpm --filter @tradehook/database migrate",
+    "db:studio": "pnpm --filter @tradehook/database studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build",
+    "docker:prod:logs": "docker compose -f docker-compose.prod.yml logs -f",
+    "tunnel": "npx --yes cloudflared@latest tunnel --url http://localhost:3001",
+    "dev": "concurrently -n api,worker,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @tradehook/api start:dev",
+    "dev:worker": "pnpm --filter @tradehook/worker start:dev",
+    "dev:web": "pnpm --filter @tradehook/web dev",
+    "build": "pnpm build:packages && pnpm --filter @tradehook/api build && pnpm --filter @tradehook/worker build && pnpm --filter @tradehook/web build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

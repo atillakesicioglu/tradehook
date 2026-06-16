@@ -1,0 +1,2 @@
+ALTER TYPE "PositionCloseReason" ADD VALUE 'MANUAL';
+ALTER TYPE "OrderTrigger" ADD VALUE 'MANUAL';

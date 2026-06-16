@@ -1,0 +1,10 @@
+# HTTPS reverse proxy — Caddy issues certificates automatically.
+# DNS: atikaiagents.cloud and api.atikaiagents.cloud → VPS IP
+
+atikaiagents.cloud {
+	reverse_proxy web:3000
+}
+
+api.atikaiagents.cloud {
+	reverse_proxy api:3001
+}

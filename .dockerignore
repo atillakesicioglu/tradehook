@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+.git
+.env
+.env.*
+!.env.production.example
+**/*.tsbuildinfo
+terminals
+.cursor
+assets
+*.md
+!deploy/HOSTINGER.md

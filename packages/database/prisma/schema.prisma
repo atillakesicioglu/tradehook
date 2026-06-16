@@ -1,0 +1,259 @@
+// TradeHook Prisma schema (MVP)
+// Spot market orders, fixed-USDT risk sizing, placeholder subscriptions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum MarketType {
+  SPOT
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderTypeEnum {
+  MARKET
+}
+
+enum RiskType {
+  FIXED_USDT
+}
+
+enum OrderStatus {
+  PENDING
+  FILLED
+  FAILED
+  CANCELLED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  QUEUED
+  PROCESSED
+  FAILED
+  DUPLICATE
+  REJECTED
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+}
+
+enum PositionCloseReason {
+  STOP_LOSS
+  TAKE_PROFIT
+  MANUAL
+}
+
+enum OrderTrigger {
+  WEBHOOK
+  STOP_LOSS
+  TAKE_PROFIT
+  MANUAL
+}
+
+enum Plan {
+  STARTER
+  PRO
+  ELITE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  TRIAL
+}
+
+enum SlTpMode {
+  PERCENT
+  USDT
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  // Firebase UID when DEV_MOCK_AUTH=false. In dev mode it mirrors the local user id.
+  firebaseUid  String?  @unique
+  email        String   @unique
+  name         String?
+  // Only used by the dev email/password auth mode.
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  binanceAccount BinanceAccount?
+  subscription   Subscription?
+  alerts         Alert[]
+  webhookLogs    WebhookLog[]
+  orders         Order[]
+  positions      Position[]
+  tradeFees      TradeFee[]
+}
+
+model BinanceAccount {
+  id              String     @id @default(cuid())
+  userId          String     @unique
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // AES-256-GCM ciphertext (never stored in plain text).
+  apiKeyEncrypted String
+  secretEncrypted String
+  accountType     MarketType @default(SPOT)
+  useTestnet      Boolean    @default(true)
+  isActive        Boolean    @default(true)
+  lastTestedAt    DateTime?
+  lastTestOk      Boolean?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Alert {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  symbol        String
+  marketType    MarketType    @default(SPOT)
+  side          OrderSide
+  orderType     OrderTypeEnum @default(MARKET)
+  riskType      RiskType      @default(FIXED_USDT)
+  riskValue     Decimal       @db.Decimal(18, 8)
+  isActive      Boolean       @default(true)
+  webhookToken  String        @unique @default(cuid())
+  webhookSecret String        @default(cuid())
+  stopLossEnabled   Boolean   @default(false)
+  stopLossMode      SlTpMode?
+  stopLossValue     Decimal?  @db.Decimal(18, 8)
+  takeProfitEnabled Boolean   @default(false)
+  takeProfitMode    SlTpMode?
+  takeProfitValue   Decimal?  @db.Decimal(18, 8)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  webhookLogs WebhookLog[]
+  orders      Order[]
+  positions   Position[]
+
+  @@index([userId])
+}
+
+model WebhookLog {
+  id             String        @id @default(cuid())
+  alertId        String?
+  alert          Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Used to deduplicate TradingView signals (unique).
+  idempotencyKey String        @unique
+  payload        Json
+  status         WebhookStatus @default(RECEIVED)
+  errorMessage   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  order Order?
+
+  @@index([alertId])
+  @@index([userId])
+}
+
+model Order {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId        String?
+  alert          Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  webhookLogId   String?       @unique
+  webhookLog     WebhookLog?   @relation(fields: [webhookLogId], references: [id], onDelete: SetNull)
+  symbol         String
+  side           OrderSide
+  type           OrderTypeEnum @default(MARKET)
+  quantity       Decimal       @db.Decimal(28, 12)
+  price          Decimal?      @db.Decimal(28, 12)
+  quoteQuantity  Decimal?      @db.Decimal(28, 12)
+  status         OrderStatus   @default(PENDING)
+  binanceOrderId String?
+  isMock         Boolean       @default(false)
+  errorMessage       String?
+  balanceBeforeUsdt  Decimal?      @db.Decimal(28, 12)
+  balanceAfterUsdt   Decimal?      @db.Decimal(28, 12)
+  trigger            OrderTrigger  @default(WEBHOOK)
+  positionId         String?
+  executedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([alertId])
+  @@index([positionId])
+}
+
+model Position {
+  id              String               @id @default(cuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId         String?
+  alert           Alert?               @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  entryOrderId    String?
+  symbol          String
+  side            OrderSide
+  entryPrice      Decimal              @db.Decimal(28, 12)
+  quantity        Decimal              @db.Decimal(28, 12)
+  stopLossPrice   Decimal?             @db.Decimal(28, 12)
+  takeProfitPrice Decimal?             @db.Decimal(28, 12)
+  currentPrice    Decimal?             @db.Decimal(28, 12)
+  unrealizedPnl   Decimal?             @db.Decimal(28, 12)
+  status          PositionStatus       @default(OPEN)
+  closeReason     PositionCloseReason?
+  exitOrderId     String?
+  closedAt        DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([alertId])
+  @@index([status])
+}
+
+// Placeholder subscription. No real payment provider in the MVP.
+model Subscription {
+  id                String             @id @default(cuid())
+  userId            String             @unique
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              Plan               @default(STARTER)
+  status            SubscriptionStatus @default(TRIAL)
+  monthlyTradeLimit Int                @default(50)
+  monthlyTradeCount Int                @default(0)
+  // Start of the current monthly counting window.
+  periodStart       DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+// Placeholder for future fee accounting (e.g. platform fee per trade).
+model TradeFee {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   String?
+  amount    Decimal  @db.Decimal(18, 8)
+  currency  String   @default("USDT")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark, fintech-leaning palette is the default. */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 9%;
+    --card-foreground: 210 40% 98%;
+    --primary: 152 76% 44%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 152 76% 44%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 152 76% 44%;
+    --radius: 0.6rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+}
+
+@keyframes price-flash-up {
+  0% {
+    background-color: hsl(152 76% 44% / 0.4);
+    box-shadow: 0 0 0 0 hsl(152 76% 44% / 0.3);
+  }
+  70% {
+    background-color: hsl(152 76% 44% / 0.15);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@keyframes price-flash-down {
+  0% {
+    background-color: hsl(0 72% 51% / 0.4);
+    box-shadow: 0 0 0 0 hsl(0 72% 51% / 0.3);
+  }
+  70% {
+    background-color: hsl(0 72% 51% / 0.15);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.animate-price-flash-up {
+  animation: price-flash-up 1.2s ease-out;
+}
+
+.animate-price-flash-down {
+  animation: price-flash-down 1.2s ease-out;
+}
