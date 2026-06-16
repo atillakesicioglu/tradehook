@@ -230,6 +230,9 @@ importers:
       '@tradehook/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.20
       dotenv-cli:
         specifier: ^8.0.0
         version: 8.0.0
@@ -252,6 +255,9 @@ importers:
       '@tradehook/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.20
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

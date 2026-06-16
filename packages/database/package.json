@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@tradehook/config": "workspace:*",
+    "@types/node": "^22.10.2",
     "dotenv-cli": "^8.0.0",
     "prisma": "^6.1.0",
     "typescript": "^5.7.2"
