@@ -1,6 +1,4 @@
-# Hostinger Docker Manager reads this file from the GitHub repo root.
-# Same as docker-compose.prod.yml — keep both in sync.
-
+# Hostinger Docker Manager — keep in sync with docker-compose.yml
 services:
   postgres:
     image: postgres:16-alpine
@@ -52,6 +50,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tradehook}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradehook}?schema=public
       REDIS_URL: redis://redis:6379
       API_PORT: 3001
+    ports:
+      - '127.0.0.1:3001:3001'
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -84,10 +84,13 @@ services:
         NEXT_PUBLIC_DEV_MOCK_AUTH: ${NEXT_PUBLIC_DEV_MOCK_AUTH:-true}
     restart: unless-stopped
     env_file: .env
+    ports:
+      - '127.0.0.1:3000:3000'
     depends_on:
       - api
 
   caddy:
+    profiles: ['caddy']
     image: caddy:2-alpine
     restart: unless-stopped
     ports:

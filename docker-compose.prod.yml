@@ -92,8 +92,9 @@ services:
     depends_on:
       - api
 
-  # Caddy — HTTPS reverse proxy (atikaiagents.cloud + api.atikaiagents.cloud)
+  # Only if host ports 80/443 are free: docker compose --profile caddy up -d
   caddy:
+    profiles: ['caddy']
     image: caddy:2-alpine
     restart: unless-stopped
     ports:

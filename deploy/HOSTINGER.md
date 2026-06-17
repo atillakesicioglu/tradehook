@@ -68,24 +68,20 @@ Mutlaka değiştir:
 ## 4. İlk deploy
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose up -d --build
 ```
 
-> **Hostinger notu:** VPS'te genelde nginx zaten **80 portunu** kullanır. Bu yüzden Caddy varsayılan olarak **kapalı** (`profiles: caddy`). Aşağıdaki nginx adımını uygula.
+> **Hostinger:** Port **80** genelde Docker Manager proxy tarafından kullanılır — **Caddy varsayılan kapalı**. HTTPS için aşağıdaki nginx adımını uygula.
 
-### HTTPS — mevcut nginx ile (önerilen)
+### HTTPS — nginx (AlmaLinux, önerilen)
 
 ```bash
-# Başarısız caddy container varsa kaldır
-docker compose -f docker-compose.prod.yml rm -f caddy 2>/dev/null || true
+docker compose rm -f caddy 2>/dev/null || true
 
-# nginx site config
-sudo cp deploy/nginx-hostinger.conf /etc/nginx/sites-available/tradehook
-sudo ln -sf /etc/nginx/sites-available/tradehook /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# SSL (Let's Encrypt)
-sudo certbot --nginx -d atikaiagents.cloud -d api.atikaiagents.cloud
+dnf install -y nginx certbot python3-certbot-nginx
+cp deploy/nginx-hostinger.conf /etc/nginx/conf.d/tradehook.conf
+nginx -t && systemctl enable --now nginx && systemctl reload nginx
+certbot --nginx -d atikaiagents.cloud -d api.atikaiagents.cloud
 ```
 
 ### Alternatif — Caddy (80/443 boşsa)
