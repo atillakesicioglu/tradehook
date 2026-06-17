@@ -1,37 +1,106 @@
+# Production stack — used by Hostinger Docker Manager (reads docker-compose.yml from GitHub)
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: tradehook-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: tradehook
-      POSTGRES_PASSWORD: tradehook
-      POSTGRES_DB: tradehook
-    ports:
-      # Host 5433 avoids clashing with any PostgreSQL already on 5432.
-      - "5433:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-tradehook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tradehook}
     volumes:
       - tradehook-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tradehook"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-tradehook}']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: tradehook-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - tradehook-redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tradehook}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradehook}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tradehook}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradehook}?schema=public
+      REDIS_URL: redis://redis:6379
+      API_PORT: 3001
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tradehook}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradehook}?schema=public
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.atikaiagents.cloud}
+        NEXT_PUBLIC_DEV_MOCK_AUTH: ${NEXT_PUBLIC_DEV_MOCK_AUTH:-true}
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
 
 volumes:
   tradehook-pgdata:
   tradehook-redisdata:
+  caddy_data:
+  caddy_config:
