@@ -22,6 +22,7 @@ import {
 interface BinanceStatus {
   connected: boolean;
   accountType?: string;
+  exchange?: 'GLOBAL' | 'TR';
   useTestnet?: boolean;
   isActive?: boolean;
   lastTestedAt?: string | null;
@@ -61,11 +62,15 @@ export default function BinancePage() {
   const [apiKey, setApiKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [useTestnet, setUseTestnet] = useState('true');
+  const [exchange, setExchange] = useState<'GLOBAL' | 'TR'>('GLOBAL');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
   const load = useCallback(async () => {
-    setStatus(await api.get<BinanceStatus>('/binance/status'));
+    const s = await api.get<BinanceStatus>('/binance/status');
+    setStatus(s);
+    if (s.exchange) setExchange(s.exchange);
+    if (s.useTestnet != null) setUseTestnet(s.useTestnet ? 'true' : 'false');
   }, []);
 
   useEffect(() => {
@@ -79,7 +84,8 @@ export default function BinancePage() {
       await api.post('/binance/connect', {
         apiKey,
         secretKey,
-        useTestnet: useTestnet === 'true',
+        exchange,
+        useTestnet: exchange === 'TR' ? false : useTestnet === 'true',
       });
       toast.success(t('binance.saved'));
       setApiKey('');
@@ -145,6 +151,12 @@ export default function BinancePage() {
             <StepList steps={tSteps('binance.guideTestnetSteps')} />
           </div>
           <div>
+            <h3 className="mb-2 text-sm font-semibold text-sky-400">
+              {t('binance.guideTrTitle')}
+            </h3>
+            <StepList steps={tSteps('binance.guideTrSteps')} />
+          </div>
+          <div>
             <h3 className="mb-2 text-sm font-semibold">{t('binance.guideMainnetTitle')}</h3>
             <StepList steps={tSteps('binance.guideMainnetSteps')} />
           </div>
@@ -186,16 +198,35 @@ export default function BinancePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="env">{t('binance.environment')}</Label>
+                <Label htmlFor="exchange">{t('binance.exchange')}</Label>
                 <Select
-                  id="env"
-                  value={useTestnet}
-                  onChange={(e) => setUseTestnet(e.target.value)}
+                  id="exchange"
+                  value={exchange}
+                  onChange={(e) =>
+                    setExchange(e.target.value as 'GLOBAL' | 'TR')
+                  }
                 >
-                  <option value="true">{t('binance.testnet')}</option>
-                  <option value="false">{t('binance.mainnet')}</option>
+                  <option value="GLOBAL">{t('binance.exchangeGlobal')}</option>
+                  <option value="TR">{t('binance.exchangeTr')}</option>
                 </Select>
               </div>
+              {exchange === 'GLOBAL' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="env">{t('binance.environment')}</Label>
+                  <Select
+                    id="env"
+                    value={useTestnet}
+                    onChange={(e) => setUseTestnet(e.target.value)}
+                  >
+                    <option value="true">{t('binance.testnet')}</option>
+                    <option value="false">{t('binance.mainnet')}</option>
+                  </Select>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t('binance.exchangeTrNote')}
+                </p>
+              )}
               <Button type="submit" disabled={saving}>
                 {saving ? t('binance.saving') : t('binance.save')}
               </Button>
@@ -214,7 +245,11 @@ export default function BinancePage() {
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                   <span>{t('binance.connected')}</span>
                   <Badge variant="secondary">
-                    {status.useTestnet ? t('binance.testnet') : t('binance.mainnet')}
+                    {status.exchange === 'TR'
+                      ? t('binance.exchangeTr')
+                      : status.useTestnet
+                        ? t('binance.testnet')
+                        : t('binance.mainnet')}
                   </Badge>
                 </div>
                 <dl className="space-y-1 text-sm text-muted-foreground">

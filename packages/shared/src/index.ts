@@ -2,5 +2,8 @@ export * from './enums';
 export * from './schemas';
 export * from './queue';
 export * from './binance';
+export * from './binance-exchange';
+export * from './binance-tr';
+export * from './tr-market-data';
 export * from './sltp';
 export * from './webhook';

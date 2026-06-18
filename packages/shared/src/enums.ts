@@ -54,3 +54,10 @@ export const SubscriptionStatus = {
 } as const;
 export type SubscriptionStatus =
   (typeof SubscriptionStatus)[keyof typeof SubscriptionStatus];
+
+export const BinanceExchange = {
+  GLOBAL: 'GLOBAL',
+  TR: 'TR',
+} as const;
+export type BinanceExchange =
+  (typeof BinanceExchange)[keyof typeof BinanceExchange];

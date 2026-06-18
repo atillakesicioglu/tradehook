@@ -1,8 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
 import { createHmac } from 'node:crypto';
+import { BinanceExchange } from './enums';
+import { BinanceTrRestClient } from './binance-tr';
+import { fetchTrMbxPrice } from './tr-market-data';
 
 const MAINNET_BASE = 'https://api.binance.com';
 const TESTNET_BASE = 'https://testnet.binance.vision';
+const TR_SYMBOLS_BASE = 'https://www.binance.tr';
 
 export interface BinanceAccountInfo {
   canTrade: boolean;
@@ -34,6 +38,23 @@ export interface BinanceMarketOrderParams {
   quoteOrderQty?: number;
   /** Sell this much base asset on a MARKET SELL. */
   quantity?: number;
+}
+
+export type BinanceSpotClient = Pick<
+  BinanceRestClient,
+  'getAccount' | 'getApiRestrictions' | 'getPrice' | 'getUsdtBalance' | 'createMarketOrder'
+>;
+
+export function createBinanceSpotClient(
+  apiKey: string,
+  secretKey: string,
+  options: { exchange?: BinanceExchange; useTestnet?: boolean },
+): BinanceSpotClient {
+  const exchange = options.exchange ?? 'GLOBAL';
+  if (exchange === 'TR') {
+    return new BinanceTrRestClient(apiKey, secretKey);
+  }
+  return new BinanceRestClient(apiKey, secretKey, options.useTestnet ?? false);
 }
 
 /**
@@ -146,17 +167,34 @@ const symbolCache = new Map<string, { symbols: string[]; expiresAt: number }>();
 export function resolvePriceFeedTestnet(
   mockTrading: boolean,
   tradingUseTestnet: boolean,
+  exchange: BinanceExchange = 'GLOBAL',
 ): boolean {
   if (mockTrading) return false;
+  if (exchange === 'TR') return false;
   return tradingUseTestnet;
+}
+
+export interface PublicMarketOptions {
+  useTestnet: boolean;
+  exchange?: BinanceExchange;
 }
 
 /** Public ticker price — no API key required. */
 export async function fetchPublicPrice(
   symbol: string,
-  useTestnet: boolean,
+  useTestnetOrOpts: boolean | PublicMarketOptions,
 ): Promise<number> {
-  const base = useTestnet ? TESTNET_BASE : MAINNET_BASE;
+  const opts: PublicMarketOptions =
+    typeof useTestnetOrOpts === 'boolean'
+      ? { useTestnet: useTestnetOrOpts, exchange: 'GLOBAL' }
+      : useTestnetOrOpts;
+  const exchange = opts.exchange ?? 'GLOBAL';
+
+  if (exchange === 'TR') {
+    return fetchTrMbxPrice(symbol);
+  }
+
+  const base = opts.useTestnet ? TESTNET_BASE : MAINNET_BASE;
   const { data } = await axios.get<{ price: string }>(
     `${base}/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`,
     { timeout: 10_000 },
@@ -165,10 +203,46 @@ export async function fetchPublicPrice(
 }
 
 export async function fetchSpotUsdtSymbols(
-  useTestnet: boolean,
+  useTestnetOrOpts: boolean | PublicMarketOptions,
   query?: string,
 ): Promise<string[]> {
-  const cacheKey = useTestnet ? 'testnet' : 'mainnet';
+  const opts: PublicMarketOptions =
+    typeof useTestnetOrOpts === 'boolean'
+      ? { useTestnet: useTestnetOrOpts, exchange: 'GLOBAL' }
+      : useTestnetOrOpts;
+  const exchange = opts.exchange ?? 'GLOBAL';
+
+  if (exchange === 'TR') {
+    const { fromTrApiSymbol } = await import('./binance-exchange');
+    const cacheKey = 'tr';
+    const now = Date.now();
+    const cached = symbolCache.get(cacheKey);
+    let symbols: string[];
+
+    if (cached && cached.expiresAt > now) {
+      symbols = cached.symbols;
+    } else {
+      const { data } = await axios.get<{
+        code: number;
+        msg?: string;
+        data: { list: Array<{ symbol: string; quoteAsset: string; type: number }> };
+      }>(`${TR_SYMBOLS_BASE}/open/v1/common/symbols`, { timeout: 15_000 });
+      if (data.code !== 0) {
+        throw new Error(data.msg ?? 'Failed to load Binance TR symbols');
+      }
+      symbols = (data.data?.list ?? [])
+        .filter((s) => s.type === 1 && s.quoteAsset === 'USDT')
+        .map((s) => fromTrApiSymbol(s.symbol))
+        .sort();
+      symbolCache.set(cacheKey, { symbols, expiresAt: now + 3_600_000 });
+    }
+
+    const q = query?.trim().toUpperCase();
+    if (!q) return symbols.slice(0, 100);
+    return symbols.filter((s) => s.includes(q)).slice(0, 50);
+  }
+
+  const cacheKey = opts.useTestnet ? 'testnet' : 'mainnet';
   const now = Date.now();
   const cached = symbolCache.get(cacheKey);
   let symbols: string[];
@@ -176,7 +250,7 @@ export async function fetchSpotUsdtSymbols(
   if (cached && cached.expiresAt > now) {
     symbols = cached.symbols;
   } else {
-    const base = useTestnet ? TESTNET_BASE : MAINNET_BASE;
+    const base = opts.useTestnet ? TESTNET_BASE : MAINNET_BASE;
     const { data } = await axios.get<ExchangeInfoResponse>(
       `${base}/api/v3/exchangeInfo`,
       { timeout: 15_000 },

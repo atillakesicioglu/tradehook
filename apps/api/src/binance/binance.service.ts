@@ -9,10 +9,11 @@ import {
 } from '@nestjs/common';
 
 import {
-  BinanceRestClient,
+  createBinanceSpotClient,
   fetchPublicPrice,
   fetchSpotUsdtSymbols,
   resolvePriceFeedTestnet,
+  BinanceExchange,
 } from '@tradehook/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -88,32 +89,27 @@ export class BinanceService {
 
 
   private clientForAccount(account: {
-
     apiKeyEncrypted: string;
-
     secretEncrypted: string;
-
     useTestnet: boolean;
-
+    exchange: BinanceExchange;
   }) {
-
-    return new BinanceRestClient(
-
+    return createBinanceSpotClient(
       this.crypto.decrypt(account.apiKeyEncrypted),
-
       this.crypto.decrypt(account.secretEncrypted),
-
-      account.useTestnet,
-
+      {
+        exchange: account.exchange,
+        useTestnet: account.exchange === 'TR' ? false : account.useTestnet,
+      },
     );
-
   }
 
-
-
   async connect(userId: string, dto: ConnectBinanceDto) {
-
-    const useTestnet = dto.useTestnet ?? loadConfig().binanceUseTestnet;
+    const exchange = dto.exchange ?? 'GLOBAL';
+    const useTestnet =
+      exchange === 'TR'
+        ? false
+        : (dto.useTestnet ?? loadConfig().binanceUseTestnet);
 
     const apiKeyEncrypted = this.crypto.encrypt(dto.apiKey);
 
@@ -133,6 +129,8 @@ export class BinanceService {
 
         accountType: dto.accountType ?? 'SPOT',
 
+        exchange,
+
         useTestnet,
 
         isActive: true,
@@ -148,6 +146,8 @@ export class BinanceService {
         secretEncrypted,
 
         accountType: dto.accountType ?? 'SPOT',
+
+        exchange,
 
         useTestnet,
 
@@ -178,6 +178,8 @@ export class BinanceService {
       connected: true,
 
       accountType: account.accountType,
+
+      exchange: account.exchange,
 
       useTestnet: account.useTestnet,
 
@@ -227,7 +229,9 @@ export class BinanceService {
 
       let withdrawalEnabled = false;
 
-      if (account.useTestnet) {
+      if (account.exchange === 'TR') {
+        withdrawalEnabled = info.canWithdraw;
+      } else if (account.useTestnet) {
 
         withdrawalEnabled = false;
 
@@ -282,11 +286,10 @@ export class BinanceService {
         canWithdraw: withdrawalEnabled,
 
         message: ok
-
-          ? account.useTestnet
-
+          ? account.exchange === 'TR'
+            ? 'Binance TR connection OK. Trading enabled, withdrawals disabled.'
+            : account.useTestnet
             ? 'Testnet connection OK. Trading enabled.'
-
             : 'Connection OK. Trading enabled, withdrawals disabled.'
 
           : 'Connected, but trading is not enabled on this key.',
@@ -434,16 +437,13 @@ export class BinanceService {
   async searchSymbols(userId: string, query?: string): Promise<string[]> {
 
     const account = await this.prisma.binanceAccount.findUnique({
-
       where: { userId },
-
     });
-
+    const exchange = account?.exchange ?? 'GLOBAL';
     const useTestnet =
-
       account?.useTestnet ?? loadConfig().binanceUseTestnet;
 
-    return fetchSpotUsdtSymbols(useTestnet, query);
+    return fetchSpotUsdtSymbols({ useTestnet, exchange }, query);
 
   }
 
@@ -474,7 +474,12 @@ export class BinanceService {
       const feedTestnet = resolvePriceFeedTestnet(
         config.mockTrading,
         account.useTestnet,
+        account.exchange,
       );
+      const marketOpts = {
+        useTestnet: feedTestnet,
+        exchange: account.exchange,
+      };
 
       const rows: HoldingRow[] = [];
 
@@ -512,7 +517,7 @@ export class BinanceService {
 
           try {
 
-            const price = await fetchPublicPrice(symbol, feedTestnet);
+            const price = await fetchPublicPrice(symbol, marketOpts);
 
             priceUsdt = price;
 

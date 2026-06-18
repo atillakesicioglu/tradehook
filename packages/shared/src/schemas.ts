@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MarketType, OrderSide, OrderType, RiskType } from './enums';
+import { MarketType, BinanceExchange, OrderSide, OrderType, RiskType } from './enums';
 
 const symbolRegex = /^[A-Z0-9]{5,20}$/;
 
@@ -27,6 +27,7 @@ export const BinanceCredentialsSchema = z.object({
   apiKey: z.string().min(10).max(256),
   secretKey: z.string().min(10).max(256),
   accountType: z.nativeEnum(MarketType).default(MarketType.SPOT),
+  exchange: z.nativeEnum(BinanceExchange).default(BinanceExchange.GLOBAL),
   useTestnet: z.boolean().default(true),
 });
 export type BinanceCredentialsInput = z.infer<typeof BinanceCredentialsSchema>;

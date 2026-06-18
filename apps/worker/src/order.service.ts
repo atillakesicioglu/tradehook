@@ -3,23 +3,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@tradehook/database';
 
 import {
-
-  BinanceRestClient,
-
+  createBinanceSpotClient,
   ExecuteOrderJob,
-
   computeStopLossPrice,
-
   computeTakeProfitPrice,
-
   fetchPublicPrice,
-
   isTradingViewPlaceholder,
-
   resolvePriceFeedTestnet,
-
   SlTpMode,
-
+  BinanceExchange,
 } from '@tradehook/shared';
 
 import { PrismaService } from './prisma.service';
@@ -122,7 +114,11 @@ export class OrderService {
 
       const outcome = config.mockTrading
 
-        ? await this.executeMock(job, account.useTestnet ?? config.binanceUseTestnet)
+        ? await this.executeMock(
+            job,
+            account.useTestnet ?? config.binanceUseTestnet,
+            account.exchange,
+          )
 
         : await this.executeReal(job, account, config.binanceUseTestnet);
 
@@ -496,53 +492,61 @@ export class OrderService {
 
 
 
-  private async getLiveBalanceBefore(
-
-    account: { apiKeyEncrypted: string; secretEncrypted: string; useTestnet: boolean },
-
+  private spotClient(
+    account: {
+      apiKeyEncrypted: string;
+      secretEncrypted: string;
+      useTestnet: boolean;
+      exchange: BinanceExchange;
+    },
     fallbackTestnet: boolean,
-
-  ): Promise<number> {
-
-    const client = new BinanceRestClient(
-
+  ) {
+    return createBinanceSpotClient(
       this.crypto.decrypt(account.apiKeyEncrypted),
-
       this.crypto.decrypt(account.secretEncrypted),
-
-      account.useTestnet ?? fallbackTestnet,
-
+      {
+        exchange: account.exchange,
+        useTestnet:
+          account.exchange === 'TR'
+            ? false
+            : (account.useTestnet ?? fallbackTestnet),
+      },
     );
-
-    return client.getUsdtBalance();
-
   }
 
-
+  private async getLiveBalanceBefore(
+    account: {
+      apiKeyEncrypted: string;
+      secretEncrypted: string;
+      useTestnet: boolean;
+      exchange: BinanceExchange;
+    },
+    fallbackTestnet: boolean,
+  ): Promise<number> {
+    const client = this.spotClient(account, fallbackTestnet);
+    return client.getUsdtBalance();
+  }
 
   private async getLiveBalanceAfter(
-
-    account: { apiKeyEncrypted: string; secretEncrypted: string; useTestnet: boolean },
-
+    account: {
+      apiKeyEncrypted: string;
+      secretEncrypted: string;
+      useTestnet: boolean;
+      exchange: BinanceExchange;
+    },
     fallbackTestnet: boolean,
-
   ): Promise<number> {
-
     return this.getLiveBalanceBefore(account, fallbackTestnet);
-
   }
 
 
 
   private async executeMock(
-
     job: ExecuteOrderJob,
-
     useTestnet: boolean,
-
+    exchange: BinanceExchange = 'GLOBAL',
   ): Promise<ExecutionOutcome> {
-
-    const price = await this.resolvePrice(job, useTestnet);
+    const price = await this.resolvePrice(job, useTestnet, exchange);
 
 
 
@@ -591,24 +595,16 @@ export class OrderService {
 
 
   private async executeReal(
-
     job: ExecuteOrderJob,
-
-    account: { apiKeyEncrypted: string; secretEncrypted: string; useTestnet: boolean },
-
+    account: {
+      apiKeyEncrypted: string;
+      secretEncrypted: string;
+      useTestnet: boolean;
+      exchange: BinanceExchange;
+    },
     fallbackTestnet: boolean,
-
   ): Promise<ExecutionOutcome> {
-
-    const client = new BinanceRestClient(
-
-      this.crypto.decrypt(account.apiKeyEncrypted),
-
-      this.crypto.decrypt(account.secretEncrypted),
-
-      account.useTestnet ?? fallbackTestnet,
-
-    );
+    const client = this.spotClient(account, fallbackTestnet);
 
 
 
@@ -693,16 +689,17 @@ export class OrderService {
 
 
   private async resolvePrice(
-
     job: ExecuteOrderJob,
-
     useTestnet: boolean,
-
+    exchange: BinanceExchange = 'GLOBAL',
   ): Promise<number> {
-
     const config = loadWorkerConfig();
-
-    const feedTestnet = resolvePriceFeedTestnet(config.mockTrading, useTestnet);
+    const feedTestnet = resolvePriceFeedTestnet(
+      config.mockTrading,
+      useTestnet,
+      exchange,
+    );
+    const marketOpts = { useTestnet: feedTestnet, exchange };
 
     if (job.webhookLogId) {
 
@@ -730,7 +727,7 @@ export class OrderService {
 
     try {
 
-      return fetchPublicPrice(job.symbol, feedTestnet);
+      return fetchPublicPrice(job.symbol, marketOpts);
 
     } catch {
 

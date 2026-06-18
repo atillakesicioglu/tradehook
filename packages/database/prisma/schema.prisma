@@ -77,6 +77,11 @@ enum SubscriptionStatus {
   TRIAL
 }
 
+enum BinanceExchange {
+  GLOBAL
+  TR
+}
+
 enum SlTpMode {
   PERCENT
   USDT
@@ -113,8 +118,9 @@ model BinanceAccount {
   // AES-256-GCM ciphertext (never stored in plain text).
   apiKeyEncrypted String
   secretEncrypted String
-  accountType     MarketType @default(SPOT)
-  useTestnet      Boolean    @default(true)
+  accountType     MarketType       @default(SPOT)
+  exchange        BinanceExchange  @default(GLOBAL)
+  useTestnet      Boolean          @default(true)
   isActive        Boolean    @default(true)
   lastTestedAt    DateTime?
   lastTestOk      Boolean?

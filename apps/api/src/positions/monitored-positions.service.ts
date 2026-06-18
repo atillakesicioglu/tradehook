@@ -15,15 +15,19 @@ export class MonitoredPositionsService {
     private readonly queue: QueueService,
   ) {}
 
-  private async priceFeedUseTestnet(userId: string): Promise<boolean> {
+  private async priceFeedUseTestnet(userId: string) {
     const config = loadConfig();
     const account = await this.prisma.binanceAccount.findUnique({
       where: { userId },
     });
-    return resolvePriceFeedTestnet(
-      config.mockTrading,
-      account?.useTestnet ?? config.binanceUseTestnet,
-    );
+    return {
+      useTestnet: resolvePriceFeedTestnet(
+        config.mockTrading,
+        account?.useTestnet ?? config.binanceUseTestnet,
+        account?.exchange ?? 'GLOBAL',
+      ),
+      exchange: account?.exchange ?? ('GLOBAL' as const),
+    };
   }
 
   async findAll(userId: string) {
@@ -34,14 +38,17 @@ export class MonitoredPositionsService {
       include: { alert: { select: { name: true } } },
     });
 
-    const useTestnet = await this.priceFeedUseTestnet(userId);
+    const marketOpts = await this.priceFeedUseTestnet(userId);
     const livePrices = new Map<string, number>();
 
     for (const p of positions) {
       if (p.status !== 'OPEN') continue;
       if (livePrices.has(p.symbol)) continue;
       try {
-        livePrices.set(p.symbol, await fetchPublicPrice(p.symbol, useTestnet));
+        livePrices.set(
+          p.symbol,
+          await fetchPublicPrice(p.symbol, marketOpts),
+        );
       } catch {
         // keep DB value
       }

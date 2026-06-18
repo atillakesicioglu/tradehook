@@ -1,5 +1,5 @@
 import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { MarketType } from '@tradehook/shared';
+import { MarketType, BinanceExchange } from '@tradehook/shared';
 
 export class ConnectBinanceDto {
   @IsString()
@@ -19,4 +19,8 @@ export class ConnectBinanceDto {
   @IsOptional()
   @IsBoolean()
   useTestnet?: boolean;
+
+  @IsOptional()
+  @IsEnum(BinanceExchange)
+  exchange?: BinanceExchange;
 }

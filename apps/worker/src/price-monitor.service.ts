@@ -40,16 +40,19 @@ export class PriceMonitorService {
 
       const tradingTestnet =
         pos.user.binanceAccount?.useTestnet ?? config.binanceUseTestnet;
-      const useTestnet = resolvePriceFeedTestnet(
+      const exchange = pos.user.binanceAccount?.exchange ?? 'GLOBAL';
+      const feedTestnet = resolvePriceFeedTestnet(
         config.mockTrading,
         tradingTestnet,
+        exchange,
       );
-      const cacheKey = `${useTestnet ? 't' : 'm'}:${pos.symbol}`;
+      const marketOpts = { useTestnet: feedTestnet, exchange };
+      const cacheKey = `${exchange}:${feedTestnet ? 't' : 'm'}:${pos.symbol}`;
 
       let currentPrice = priceCache.get(cacheKey);
       if (currentPrice == null) {
         try {
-          currentPrice = await fetchPublicPrice(pos.symbol, useTestnet);
+          currentPrice = await fetchPublicPrice(pos.symbol, marketOpts);
           priceCache.set(cacheKey, currentPrice);
         } catch (err) {
           this.logger.warn(
