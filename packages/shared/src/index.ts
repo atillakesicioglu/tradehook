@@ -7,4 +7,5 @@ export * from './binance-tr';
 export * from './tr-market-data';
 export * from './sltp';
 export * from './symbol';
+export * from './strategy';
 export * from './webhook';

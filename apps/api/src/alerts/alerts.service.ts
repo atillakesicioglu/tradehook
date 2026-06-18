@@ -150,6 +150,11 @@ export class AlertsService {
 
     await this.binance.assertSymbolTradable(userId, dto.symbol);
 
+    const holdPercent = dto.holdPercent ?? 0;
+    if (holdPercent < 0 || holdPercent >= 100) {
+      throw new BadRequestException('Hold percent must be between 0 and 99.99');
+    }
+
     const symbol = dto.symbol.toUpperCase();
 
     const buyAlert = await this.prisma.alert.create({
@@ -207,6 +212,8 @@ export class AlertsService {
         symbol,
 
         initialUsdt: new Prisma.Decimal(dto.initialUsdt),
+
+        holdPercent: new Prisma.Decimal(holdPercent),
 
         buyAlertId: buyAlert.id,
 
@@ -534,6 +541,8 @@ export class AlertsService {
 
       heldQuantity: Prisma.Decimal | null;
 
+      holdPercent: Prisma.Decimal;
+
       createdAt: Date;
 
       buyAlert: AlertRecord;
@@ -561,6 +570,8 @@ export class AlertsService {
       nextBuyUsdt,
 
       heldQuantity: pair.heldQuantity ? Number(pair.heldQuantity) : null,
+
+      holdPercent: Number(pair.holdPercent),
 
       inPosition: pair.heldQuantity != null && Number(pair.heldQuantity) > 0,
 

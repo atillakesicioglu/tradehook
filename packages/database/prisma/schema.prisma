@@ -173,6 +173,8 @@ model AlertPair {
   initialUsdt   Decimal  @db.Decimal(18, 8)
   compoundUsdt  Decimal? @db.Decimal(18, 8)
   heldQuantity  Decimal? @db.Decimal(28, 12)
+  /** Keep this % of base asset in wallet on each sell (0 = sell all). */
+  holdPercent   Decimal  @default(0) @db.Decimal(5, 2)
   buyAlertId    String   @unique
   sellAlertId   String   @unique
   buyAlert      Alert    @relation("PairBuyAlert", fields: [buyAlertId], references: [id], onDelete: Cascade)

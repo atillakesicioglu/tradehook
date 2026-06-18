@@ -158,8 +158,13 @@ export const translations: Record<Locale, Dict> = {
     'alerts.initialUsdt': 'First buy amount (USDT)',
     'alerts.sellSection': 'Sell signal (TradingView)',
     'alerts.sellSectionDesc':
-      'No amount needed. When your strategy fires a sell, we sell 100% of the coins bought in the last buy.',
+      'No amount needed. When your strategy fires a sell, we sell the position minus the hold % below.',
+    'alerts.holdPercent': 'Hold in wallet (%)',
+    'alerts.holdPercentDesc':
+      'On each sell, keep this % of coins in your wallet (e.g. 20 = sell 80%, keep 20%). Next buy still uses all USDT from the sale.',
+    'alerts.holdPercentHint': '0 = sell entire position',
     'alerts.nextBuy': 'Next buy will use',
+    'alerts.pairHold': 'Hold on sell',
     'alerts.inPosition': 'In position',
     'alerts.waitingBuy': 'Waiting for buy',
     'alerts.buyWebhook': 'Buy webhook',
@@ -479,8 +484,13 @@ export const translations: Record<Locale, Dict> = {
     'alerts.initialUsdt': 'İlk alım tutarı (USDT)',
     'alerts.sellSection': 'Satış sinyali (TradingView)',
     'alerts.sellSectionDesc':
-      'Tutar gerekmez. Stratejiniz sat sinyali verdiğinde, son alımdan gelen coinlerin tamamı satılır.',
+      'Tutar gerekmez. Sat sinyalinde pozisyonun belirttiğin yüzdesi cüzdanda kalır, kalanı satılır.',
+    'alerts.holdPercent': 'Elinde tut (%)',
+    'alerts.holdPercentDesc':
+      'Her satışta coinin bu kadarını cüzdanda bırak (ör. 20 → %80 sat, %20 tut). Sonraki alım yine satıştan gelen tüm USDT ile yapılır.',
+    'alerts.holdPercentHint': '0 = pozisyonun tamamını sat',
     'alerts.nextBuy': 'Sonraki alım tutarı',
+    'alerts.pairHold': 'Satışta elde tut',
     'alerts.inPosition': 'Pozisyonda',
     'alerts.waitingBuy': 'Alış bekleniyor',
     'alerts.buyWebhook': 'Alış webhook',

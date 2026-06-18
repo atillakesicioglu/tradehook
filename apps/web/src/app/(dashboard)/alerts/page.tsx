@@ -53,6 +53,7 @@ interface AlertPair {
   compoundUsdt: number | null;
   nextBuyUsdt: number;
   heldQuantity: number | null;
+  holdPercent: number;
   inPosition: boolean;
   buyAlert: Alert;
   sellAlert: Alert;
@@ -110,6 +111,7 @@ export default function AlertsPage() {
   const [name, setName] = useState('');
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [initialUsdt, setInitialUsdt] = useState('10');
+  const [holdPercent, setHoldPercent] = useState('0');
   const [creating, setCreating] = useState(false);
 
   const [advName, setAdvName] = useState('');
@@ -175,6 +177,7 @@ export default function AlertsPage() {
         name,
         symbol,
         initialUsdt: Number(initialUsdt),
+        holdPercent: Number(holdPercent) || 0,
       });
       toast.success(t('alerts.strategyCreated'));
       setName('');
@@ -317,9 +320,24 @@ export default function AlertsPage() {
               <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-4 space-y-3">
                 <h3 className="font-semibold text-sky-400">{t('alerts.sellSection')}</h3>
                 <p className="text-xs text-muted-foreground">{t('alerts.sellSectionDesc')}</p>
-                <p className="text-sm text-muted-foreground">
-                  10 USDT → 14 USDT → sonraki alım 14 USDT ile
-                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="holdPercent">{t('alerts.holdPercent')}</Label>
+                  <Input
+                    id="holdPercent"
+                    type="number"
+                    min="0"
+                    max="99"
+                    step="0.1"
+                    value={holdPercent}
+                    onChange={(e) => setHoldPercent(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('alerts.holdPercentDesc')}
+                  </p>
+                  <p className="text-xs text-muted-foreground/80">
+                    {t('alerts.holdPercentHint')}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -402,6 +420,9 @@ export default function AlertsPage() {
                       <CardTitle className="text-base">{pair.name}</CardTitle>
                       <CardDescription className="mt-1">
                         {pair.symbol} · {t('alerts.nextBuy')}: {formatNumber(pair.nextBuyUsdt)} USDT
+                        {pair.holdPercent > 0 && (
+                          <> · {t('alerts.pairHold')}: %{pair.holdPercent}</>
+                        )}
                         {' · '}
                         {pair.inPosition ? (
                           <span className="text-emerald-400">{t('alerts.inPosition')}</span>

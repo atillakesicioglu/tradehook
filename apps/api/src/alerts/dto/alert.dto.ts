@@ -18,6 +18,8 @@ import {
 
   Min,
 
+  Max,
+
   ValidateIf,
 
 } from 'class-validator';
@@ -167,6 +169,12 @@ export class CreateAlertPairDto {
   @IsNumber()
   @Min(0.00000001)
   initialUsdt!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(99.99)
+  holdPercent?: number;
 }
 
 export class UpdateAlertDto {

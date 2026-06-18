@@ -4,6 +4,7 @@ import {
   TradingViewWebhookSchema,
   buildWebhookIdempotencyKey,
   isSymbolTradableOnBinanceTr,
+  computeSellQuantity,
 } from '@tradehook/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
@@ -117,7 +118,14 @@ export class WebhooksService {
           'No open position to sell — wait for a buy signal first',
         );
       }
-      quantity = Number(pair.heldQuantity);
+      const total = Number(pair.heldQuantity);
+      const holdPct = Number(pair.holdPercent ?? 0);
+      quantity = computeSellQuantity(total, holdPct);
+      if (quantity <= 0) {
+        return reject(
+          'Sell quantity is zero after hold percent — lower hold % or wait for buy',
+        );
+      }
     } else if (alert.riskType === 'COMPOUND_USDT') {
       const pair = alert.pairAsBuy;
       if (pair?.heldQuantity && Number(pair.heldQuantity) > 0) {
