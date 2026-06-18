@@ -11,6 +11,7 @@ import {
   isTradingViewPlaceholder,
   resolvePriceFeedTestnet,
   SlTpMode,
+  isSymbolTradableOnBinanceTr,
   BinanceExchange,
 } from '@tradehook/shared';
 
@@ -72,7 +73,15 @@ export class OrderService {
 
       where: { id: job.alertId },
 
-      include: { user: { include: { binanceAccount: true, subscription: true } } },
+      include: {
+
+        user: { include: { binanceAccount: true, subscription: true } },
+
+        pairAsBuy: true,
+
+        pairAsSell: true,
+
+      },
 
     });
 
@@ -100,7 +109,14 @@ export class OrderService {
 
     if (!account) throw new Error('No Binance account connected');
 
-
+    if (account.exchange === 'TR') {
+      const tradable = await isSymbolTradableOnBinanceTr(job.symbol);
+      if (!tradable) {
+        throw new Error(
+          `${job.symbol} Binance TR'de listelenmiyor — alarm sembolünü güncelleyin`,
+        );
+      }
+    }
 
     try {
 
@@ -198,6 +214,10 @@ export class OrderService {
 
 
 
+      await this.updateAlertPairAfterOrder(alert, job.side, outcome);
+
+
+
       if (job.positionId) {
 
         await this.prisma.position.update({
@@ -287,6 +307,60 @@ export class OrderService {
       }
 
       throw err;
+
+    }
+
+  }
+
+
+
+  private async updateAlertPairAfterOrder(
+
+    alert: {
+
+      id: string;
+
+      pairAsBuy: { id: string } | null;
+
+      pairAsSell: { id: string } | null;
+
+    },
+
+    side: string,
+
+    outcome: ExecutionOutcome,
+
+  ): Promise<void> {
+
+    if (side === 'BUY' && alert.pairAsBuy) {
+
+      await this.prisma.alertPair.update({
+
+        where: { id: alert.pairAsBuy.id },
+
+        data: { heldQuantity: new Prisma.Decimal(outcome.quantity) },
+
+      });
+
+      return;
+
+    }
+
+    if (side === 'SELL' && alert.pairAsSell) {
+
+      await this.prisma.alertPair.update({
+
+        where: { id: alert.pairAsSell.id },
+
+        data: {
+
+          compoundUsdt: new Prisma.Decimal(outcome.quoteQuantity),
+
+          heldQuantity: null,
+
+        },
+
+      });
 
     }
 

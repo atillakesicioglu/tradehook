@@ -2,11 +2,10 @@ import axios, { AxiosInstance } from 'axios';
 import { createHmac } from 'node:crypto';
 import { BinanceExchange } from './enums';
 import { BinanceTrRestClient } from './binance-tr';
-import { fetchTrMbxPrice } from './tr-market-data';
+import { fetchTrMbxPrice, fetchTrSearchSymbols, fetchMbxUsdtSymbols, fetchTrTrySymbols } from './tr-market-data';
 
 const MAINNET_BASE = 'https://api.binance.com';
 const TESTNET_BASE = 'https://testnet.binance.vision';
-const TR_SYMBOLS_BASE = 'https://www.binance.tr';
 
 export interface BinanceAccountInfo {
   canTrade: boolean;
@@ -177,6 +176,8 @@ export function resolvePriceFeedTestnet(
 export interface PublicMarketOptions {
   useTestnet: boolean;
   exchange?: BinanceExchange;
+  /** Include Binance TR TRY pairs (BTCTRY, etc.) in symbol search. Default true. */
+  includeTrTry?: boolean;
 }
 
 /** Public ticker price — no API key required. */
@@ -211,60 +212,49 @@ export async function fetchSpotUsdtSymbols(
       ? { useTestnet: useTestnetOrOpts, exchange: 'GLOBAL' }
       : useTestnetOrOpts;
   const exchange = opts.exchange ?? 'GLOBAL';
+  const includeTrTry = opts.includeTrTry !== false;
+
+  let symbols: string[];
 
   if (exchange === 'TR') {
-    const { fromTrApiSymbol } = await import('./binance-exchange');
-    const cacheKey = 'tr';
+    try {
+      symbols = await fetchTrSearchSymbols();
+    } catch {
+      symbols = await fetchMbxUsdtSymbols().catch(() => []);
+    }
+  } else {
+    const cacheKey = opts.useTestnet ? 'testnet' : 'mainnet';
     const now = Date.now();
     const cached = symbolCache.get(cacheKey);
-    let symbols: string[];
 
     if (cached && cached.expiresAt > now) {
       symbols = cached.symbols;
     } else {
-      const { data } = await axios.get<{
-        code: number;
-        msg?: string;
-        data: { list: Array<{ symbol: string; quoteAsset: string; type: number }> };
-      }>(`${TR_SYMBOLS_BASE}/open/v1/common/symbols`, { timeout: 15_000 });
-      if (data.code !== 0) {
-        throw new Error(data.msg ?? 'Failed to load Binance TR symbols');
-      }
-      symbols = (data.data?.list ?? [])
-        .filter((s) => s.type === 1 && s.quoteAsset === 'USDT')
-        .map((s) => fromTrApiSymbol(s.symbol))
+      const base = opts.useTestnet ? TESTNET_BASE : MAINNET_BASE;
+      const { data } = await axios.get<ExchangeInfoResponse>(
+        `${base}/api/v3/exchangeInfo`,
+        { timeout: 15_000 },
+      );
+      symbols = data.symbols
+        .filter(
+          (s) =>
+            s.status === 'TRADING' &&
+            s.quoteAsset === 'USDT' &&
+            s.isSpotTradingAllowed,
+        )
+        .map((s) => s.symbol)
         .sort();
       symbolCache.set(cacheKey, { symbols, expiresAt: now + 3_600_000 });
     }
 
-    const q = query?.trim().toUpperCase();
-    if (!q) return symbols.slice(0, 100);
-    return symbols.filter((s) => s.includes(q)).slice(0, 50);
-  }
-
-  const cacheKey = opts.useTestnet ? 'testnet' : 'mainnet';
-  const now = Date.now();
-  const cached = symbolCache.get(cacheKey);
-  let symbols: string[];
-
-  if (cached && cached.expiresAt > now) {
-    symbols = cached.symbols;
-  } else {
-    const base = opts.useTestnet ? TESTNET_BASE : MAINNET_BASE;
-    const { data } = await axios.get<ExchangeInfoResponse>(
-      `${base}/api/v3/exchangeInfo`,
-      { timeout: 15_000 },
-    );
-    symbols = data.symbols
-      .filter(
-        (s) =>
-          s.status === 'TRADING' &&
-          s.quoteAsset === 'USDT' &&
-          s.isSpotTradingAllowed,
-      )
-      .map((s) => s.symbol)
-      .sort();
-    symbolCache.set(cacheKey, { symbols, expiresAt: now + 3_600_000 });
+    if (includeTrTry) {
+      try {
+        const tryPairs = await fetchTrTrySymbols();
+        symbols = [...new Set([...symbols, ...tryPairs])].sort();
+      } catch {
+        // TR TRY list optional when on Global
+      }
+    }
   }
 
   const q = query?.trim().toUpperCase();

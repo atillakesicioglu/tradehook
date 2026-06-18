@@ -154,7 +154,20 @@ export class CreateAlertDto {
 
 }
 
+export class CreateAlertPairDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  name!: string;
 
+  @IsString()
+  @Matches(/^[A-Za-z0-9]{5,20}$/, { message: 'Symbol must look like BTCUSDT' })
+  symbol!: string;
+
+  @IsNumber()
+  @Min(0.00000001)
+  initialUsdt!: number;
+}
 
 export class UpdateAlertDto {
 

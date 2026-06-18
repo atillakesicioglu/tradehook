@@ -19,6 +19,8 @@ export type OrderType = (typeof OrderType)[keyof typeof OrderType];
 
 export const RiskType = {
   FIXED_USDT: 'FIXED_USDT',
+  COMPOUND_USDT: 'COMPOUND_USDT',
+  FULL_POSITION: 'FULL_POSITION',
 } as const;
 export type RiskType = (typeof RiskType)[keyof typeof RiskType];
 

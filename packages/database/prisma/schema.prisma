@@ -29,6 +29,8 @@ enum OrderTypeEnum {
 
 enum RiskType {
   FIXED_USDT
+  COMPOUND_USDT
+  FULL_POSITION
 }
 
 enum OrderStatus {
@@ -105,6 +107,7 @@ model User {
   binanceAccount BinanceAccount?
   subscription   Subscription?
   alerts         Alert[]
+  alertPairs     AlertPair[]
   webhookLogs    WebhookLog[]
   orders         Order[]
   positions      Position[]
@@ -154,6 +157,28 @@ model Alert {
   webhookLogs WebhookLog[]
   orders      Order[]
   positions   Position[]
+  pairAsBuy   AlertPair? @relation("PairBuyAlert")
+  pairAsSell  AlertPair? @relation("PairSellAlert")
+
+  @@index([userId])
+}
+
+/// Linked BUY + SELL alerts: compound USDT across cycles, sell full position on signal.
+model AlertPair {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  symbol        String
+  initialUsdt   Decimal  @db.Decimal(18, 8)
+  compoundUsdt  Decimal? @db.Decimal(18, 8)
+  heldQuantity  Decimal? @db.Decimal(28, 12)
+  buyAlertId    String   @unique
+  sellAlertId   String   @unique
+  buyAlert      Alert    @relation("PairBuyAlert", fields: [buyAlertId], references: [id], onDelete: Cascade)
+  sellAlert     Alert    @relation("PairSellAlert", fields: [sellAlertId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([userId])
 }

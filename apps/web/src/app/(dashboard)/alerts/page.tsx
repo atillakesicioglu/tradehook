@@ -32,6 +32,7 @@ interface Alert {
   symbol: string;
   side: string;
   riskValue: number;
+  riskType?: string;
   isActive: boolean;
   webhookUrl: string;
   isLocalWebhook?: boolean;
@@ -44,64 +45,102 @@ interface Alert {
   takeProfitValue: number | null;
 }
 
+interface AlertPair {
+  id: string;
+  name: string;
+  symbol: string;
+  initialUsdt: number;
+  compoundUsdt: number | null;
+  nextBuyUsdt: number;
+  heldQuantity: number | null;
+  inPosition: boolean;
+  buyAlert: Alert;
+  sellAlert: Alert;
+}
+
+interface AlertsResponse {
+  pairs: AlertPair[];
+  alerts: Alert[];
+}
+
 interface BalanceInfo {
   availableUsdt: number;
   totalUsdt: number;
   connected: boolean;
 }
 
-function formatSlTp(
-  enabled: boolean,
-  mode: string | null,
-  value: number | null,
-): string {
-  if (!enabled || !mode || value == null) return '—';
-  return mode === 'PERCENT' ? `${value}%` : `${value} USDT`;
+function WebhookBlock({ alert, label }: { alert: Alert; label: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </Label>
+        <Badge variant={alert.isActive ? 'success' : 'secondary'}>
+          {alert.isActive ? t('alerts.active') : t('alerts.passive')}
+        </Badge>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm">{alert.side === 'BUY' ? t('alerts.buy') : t('alerts.sell')}</span>
+        <CopyButton value={alert.webhookUrl} label={t('alerts.copyUrl')} />
+      </div>
+      <code className="block overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs">
+        {alert.webhookUrl}
+      </code>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground">{t('alerts.tvMessage')}</summary>
+        <pre className="mt-2 overflow-x-auto rounded bg-muted p-2">
+          {JSON.stringify(alert.messageJson, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
 }
 
 export default function AlertsPage() {
   const { t, locale } = useI18n();
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [pairs, setPairs] = useState<AlertPair[]>([]);
+  const [standaloneAlerts, setStandaloneAlerts] = useState<Alert[]>([]);
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedPair, setExpandedPair] = useState<Set<string>>(new Set());
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [expandedAlert, setExpandedAlert] = useState<Set<string>>(new Set());
+
   const [name, setName] = useState('');
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [side, setSide] = useState('BUY');
-  const [riskValue, setRiskValue] = useState('50');
+  const [initialUsdt, setInitialUsdt] = useState('10');
+  const [creating, setCreating] = useState(false);
+
+  const [advName, setAdvName] = useState('');
+  const [advSymbol, setAdvSymbol] = useState('BTCUSDT');
+  const [advSide, setAdvSide] = useState('BUY');
+  const [advRisk, setAdvRisk] = useState('50');
   const [stopLossEnabled, setStopLossEnabled] = useState(false);
   const [stopLossMode, setStopLossMode] = useState('PERCENT');
   const [stopLossValue, setStopLossValue] = useState('');
   const [takeProfitEnabled, setTakeProfitEnabled] = useState(false);
   const [takeProfitMode, setTakeProfitMode] = useState('PERCENT');
   const [takeProfitValue, setTakeProfitValue] = useState('');
-  const [creating, setCreating] = useState(false);
 
   const maxRisk = balance?.availableUsdt ?? 0;
   const exampleEntry = 100;
-
   const slPreview =
     stopLossEnabled && stopLossValue
-      ? computeStopLossPrice(
-          exampleEntry,
-          stopLossMode as 'PERCENT' | 'USDT',
-          Number(stopLossValue),
-        )
+      ? computeStopLossPrice(exampleEntry, stopLossMode as 'PERCENT' | 'USDT', Number(stopLossValue))
       : null;
   const tpPreview =
     takeProfitEnabled && takeProfitValue
-      ? computeTakeProfitPrice(
-          exampleEntry,
-          takeProfitMode as 'PERCENT' | 'USDT',
-          Number(takeProfitValue),
-        )
+      ? computeTakeProfitPrice(exampleEntry, takeProfitMode as 'PERCENT' | 'USDT', Number(takeProfitValue))
       : null;
 
   const load = useCallback(async () => {
     const [alertsData, balanceData] = await Promise.all([
-      api.get<Alert[]>('/alerts'),
+      api.get<AlertsResponse>('/alerts'),
       api.get<BalanceInfo>('/binance/balance'),
     ]);
-    setAlerts(alertsData);
+    setPairs(alertsData.pairs);
+    setStandaloneAlerts(alertsData.alerts);
     setBalance(balanceData);
   }, []);
 
@@ -110,42 +149,52 @@ export default function AlertsPage() {
   }, [load]);
 
   useEffect(() => {
-    if (maxRisk > 0 && Number(riskValue) > maxRisk) {
-      setRiskValue(String(maxRisk));
+    if (maxRisk > 0 && Number(initialUsdt) > maxRisk) {
+      setInitialUsdt(String(maxRisk));
     }
-  }, [maxRisk, riskValue]);
+  }, [maxRisk, initialUsdt]);
 
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const onRiskChange = (raw: string) => {
+  const onInitialUsdtChange = (raw: string) => {
     const num = Number(raw);
     if (!raw || Number.isNaN(num)) {
-      setRiskValue(raw);
+      setInitialUsdt(raw);
       return;
     }
     if (maxRisk > 0 && num > maxRisk) {
-      setRiskValue(String(maxRisk));
+      setInitialUsdt(String(maxRisk));
     } else {
-      setRiskValue(raw);
+      setInitialUsdt(raw);
     }
   };
 
-  const create = async (e: React.FormEvent) => {
+  const createPair = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await api.post('/alerts/pairs', {
+        name,
+        symbol,
+        initialUsdt: Number(initialUsdt),
+      });
+      toast.success(t('alerts.strategyCreated'));
+      setName('');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('alerts.createFailed'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createAdvanced = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
     try {
       const payload: Record<string, unknown> = {
-        name,
-        symbol,
-        side,
-        riskValue: Number(riskValue),
+        name: advName,
+        symbol: advSymbol,
+        side: advSide,
+        riskValue: Number(advRisk),
       };
       if (stopLossEnabled) {
         payload.stopLossEnabled = true;
@@ -159,11 +208,7 @@ export default function AlertsPage() {
       }
       await api.post('/alerts', payload);
       toast.success(t('alerts.created'));
-      setName('');
-      setStopLossEnabled(false);
-      setStopLossValue('');
-      setTakeProfitEnabled(false);
-      setTakeProfitValue('');
+      setAdvName('');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('alerts.createFailed'));
@@ -172,19 +217,35 @@ export default function AlertsPage() {
     }
   };
 
-  const toggle = async (alert: Alert) => {
+  const togglePair = (id: string) => {
+    setExpandedPair((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAlert = async (alert: Alert) => {
     await api.patch(`/alerts/${alert.id}`, { isActive: !alert.isActive });
     await load();
   };
 
-  const remove = async (id: string) => {
+  const removePair = async (id: string) => {
+    await api.del(`/alerts/pairs/${id}`);
+    toast.success(t('alerts.deleted'));
+    await load();
+  };
+
+  const removeAlert = async (id: string) => {
     await api.del(`/alerts/${id}`);
     toast.success(t('alerts.deleted'));
     await load();
   };
 
+  const allAlerts = [...pairs.flatMap((p) => [p.buyAlert, p.sellAlert]), ...standaloneAlerts];
   const needsTunnel =
-    alerts.length === 0 || alerts.some((a) => a.isLocalWebhook !== false);
+    allAlerts.length === 0 || allAlerts.some((a) => a.isLocalWebhook !== false);
 
   return (
     <div className="space-y-6">
@@ -203,11 +264,6 @@ export default function AlertsPage() {
                 <p className="text-muted-foreground">{t('alerts.tvWarningBody')}</p>
               </div>
             </div>
-            <div className="space-y-1 rounded-md bg-muted/40 p-3 font-mono text-xs">
-              <p>{t('alerts.tvTunnelCloudflare')}</p>
-              <p className="text-muted-foreground">{t('alerts.tvTunnelNgrok')}</p>
-              <p className="pt-2 text-primary">{t('alerts.tvEnvHint')}</p>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -218,10 +274,10 @@ export default function AlertsPage() {
           <CardDescription>{t('alerts.newDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={create} className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <form onSubmit={createPair} className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">{t('alerts.name')}</Label>
+                <Label htmlFor="name">{t('alerts.strategyName')}</Label>
                 <Input
                   id="name"
                   value={name}
@@ -234,203 +290,168 @@ export default function AlertsPage() {
                 <Label htmlFor="symbol">{t('alerts.symbol')}</Label>
                 <SymbolSearch id="symbol" value={symbol} onChange={setSymbol} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="side">{t('alerts.side')}</Label>
-                <Select id="side" value={side} onChange={(e) => setSide(e.target.value)}>
-                  <option value="BUY">{t('alerts.buy')}</option>
-                  <option value="SELL">{t('alerts.sell')}</option>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="risk">{t('alerts.risk')}</Label>
-                <Input
-                  id="risk"
-                  type="number"
-                  min="0.01"
-                  max={maxRisk > 0 ? maxRisk : undefined}
-                  step="any"
-                  value={riskValue}
-                  onChange={(e) => onRiskChange(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t('alerts.maxRisk')}: {formatNumber(maxRisk)} USDT
-                </p>
-              </div>
             </div>
 
-            <div className="rounded-lg border border-border p-4">
-              <p className="mb-4 text-sm font-medium">{t('alerts.extraSettings')}</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-3 rounded-md bg-muted/30 p-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={stopLossEnabled}
-                      onChange={(e) => setStopLossEnabled(e.target.checked)}
-                      className="rounded border-border"
-                    />
-                    {t('alerts.stopLoss')}
-                  </label>
-                  {stopLossEnabled && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select
-                        value={stopLossMode}
-                        onChange={(e) => setStopLossMode(e.target.value)}
-                      >
-                        <option value="PERCENT">{t('alerts.modePercent')}</option>
-                        <option value="USDT">{t('alerts.modeUsdt')}</option>
-                      </Select>
-                      <Input
-                        type="number"
-                        min="0.01"
-                        step="any"
-                        value={stopLossValue}
-                        onChange={(e) => setStopLossValue(e.target.value)}
-                        placeholder={t('alerts.valuePlaceholder')}
-                        required
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-3 rounded-md bg-muted/30 p-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={takeProfitEnabled}
-                      onChange={(e) => setTakeProfitEnabled(e.target.checked)}
-                      className="rounded border-border"
-                    />
-                    {t('alerts.takeProfit')}
-                  </label>
-                  {takeProfitEnabled && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select
-                        value={takeProfitMode}
-                        onChange={(e) => setTakeProfitMode(e.target.value)}
-                      >
-                        <option value="PERCENT">{t('alerts.modePercent')}</option>
-                        <option value="USDT">{t('alerts.modeUsdt')}</option>
-                      </Select>
-                      <Input
-                        type="number"
-                        min="0.01"
-                        step="any"
-                        value={takeProfitValue}
-                        onChange={(e) => setTakeProfitValue(e.target.value)}
-                        placeholder={t('alerts.valuePlaceholder')}
-                        required
-                      />
-                    </div>
-                  )}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3">
+                <h3 className="font-semibold text-emerald-400">{t('alerts.buySection')}</h3>
+                <p className="text-xs text-muted-foreground">{t('alerts.buySectionDesc')}</p>
+                <div className="space-y-2">
+                  <Label htmlFor="initialUsdt">{t('alerts.initialUsdt')}</Label>
+                  <Input
+                    id="initialUsdt"
+                    type="number"
+                    min="0.01"
+                    max={maxRisk > 0 ? maxRisk : undefined}
+                    step="any"
+                    value={initialUsdt}
+                    onChange={(e) => onInitialUsdtChange(e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('alerts.maxRisk')}: {formatNumber(maxRisk)} USDT
+                  </p>
                 </div>
               </div>
-              {(slPreview != null || tpPreview != null) && (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {t('alerts.slTpExample')
-                    .replace('{entry}', String(exampleEntry))
-                    .replace('{sl}', slPreview != null ? formatPrice(slPreview, locale) : '—')
-                    .replace('{tp}', tpPreview != null ? formatPrice(tpPreview, locale) : '—')}
+
+              <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-4 space-y-3">
+                <h3 className="font-semibold text-sky-400">{t('alerts.sellSection')}</h3>
+                <p className="text-xs text-muted-foreground">{t('alerts.sellSectionDesc')}</p>
+                <p className="text-sm text-muted-foreground">
+                  10 USDT → 14 USDT → sonraki alım 14 USDT ile
                 </p>
-              )}
-              <p className="mt-2 text-xs text-muted-foreground">{t('alerts.slTpNote')}</p>
+              </div>
             </div>
 
             <Button type="submit" disabled={creating}>
-              {creating ? t('alerts.creating') : t('alerts.create')}
+              {creating ? t('alerts.creating') : t('alerts.createStrategy')}
             </Button>
           </form>
         </CardContent>
       </Card>
 
+      <details
+        className="rounded-lg border border-border"
+        open={showAdvanced}
+        onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+          {t('alerts.advancedTitle')}
+        </summary>
+        <CardContent className="border-t border-border pt-4">
+          <p className="mb-4 text-xs text-muted-foreground">{t('alerts.advancedDesc')}</p>
+          <form onSubmit={createAdvanced} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Input
+                value={advName}
+                onChange={(e) => setAdvName(e.target.value)}
+                placeholder={t('alerts.name')}
+                required
+              />
+              <SymbolSearch value={advSymbol} onChange={setAdvSymbol} />
+              <Select value={advSide} onChange={(e) => setAdvSide(e.target.value)}>
+                <option value="BUY">{t('alerts.buy')}</option>
+                <option value="SELL">{t('alerts.sell')}</option>
+              </Select>
+              <Input
+                type="number"
+                min="0.01"
+                value={advRisk}
+                onChange={(e) => setAdvRisk(e.target.value)}
+                placeholder={t('alerts.risk')}
+                required
+              />
+            </div>
+            {(slPreview != null || tpPreview != null) && (
+              <p className="text-xs text-muted-foreground">
+                SL/TP önizleme: {slPreview != null ? formatPrice(slPreview, locale) : '—'} /{' '}
+                {tpPreview != null ? formatPrice(tpPreview, locale) : '—'}
+              </p>
+            )}
+            <Button type="submit" size="sm" variant="outline" disabled={creating}>
+              {t('alerts.create')}
+            </Button>
+          </form>
+        </CardContent>
+      </details>
+
       <MonitoredPositions />
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">{t('alerts.listTitle')}</h2>
-        {alerts.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t('alerts.none')}</p>
+        <h2 className="text-lg font-semibold">{t('alerts.strategiesTitle')}</h2>
+        {pairs.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t('alerts.noStrategies')}</p>
         )}
-        {alerts.map((alert) => {
-          const isOpen = expanded.has(alert.id);
+        {pairs.map((pair) => {
+          const isOpen = expandedPair.has(pair.id);
           return (
-            <Card key={alert.id}>
+            <Card key={pair.id}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-4">
                   <button
                     type="button"
                     className="flex flex-1 items-start gap-2 text-left"
-                    onClick={() => toggleExpand(alert.id)}
+                    onClick={() => togglePair(pair.id)}
                   >
                     {isOpen ? (
-                      <ChevronUp className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <ChevronUp className="mt-0.5 h-4 w-4 shrink-0" />
                     ) : (
-                      <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" />
                     )}
                     <div>
-                      <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                        {alert.name}
-                        <Badge variant={alert.isActive ? 'success' : 'secondary'}>
-                          {alert.isActive ? t('alerts.active') : t('alerts.passive')}
-                        </Badge>
-                      </CardTitle>
+                      <CardTitle className="text-base">{pair.name}</CardTitle>
                       <CardDescription className="mt-1">
-                        {alert.symbol} · {alert.side === 'BUY' ? t('alerts.buy') : t('alerts.sell')} ·{' '}
-                        {alert.riskValue} USDT
-                        {(alert.stopLossEnabled || alert.takeProfitEnabled) && (
-                          <>
-                            {' '}
-                            · SL {formatSlTp(alert.stopLossEnabled, alert.stopLossMode, alert.stopLossValue)}
-                            {' '}
-                            · TP{' '}
-                            {formatSlTp(
-                              alert.takeProfitEnabled,
-                              alert.takeProfitMode,
-                              alert.takeProfitValue,
-                            )}
-                          </>
+                        {pair.symbol} · {t('alerts.nextBuy')}: {formatNumber(pair.nextBuyUsdt)} USDT
+                        {' · '}
+                        {pair.inPosition ? (
+                          <span className="text-emerald-400">{t('alerts.inPosition')}</span>
+                        ) : (
+                          <span>{t('alerts.waitingBuy')}</span>
                         )}
                       </CardDescription>
                     </div>
                   </button>
-                  <div className="flex shrink-0 gap-2">
-                    <Button variant="outline" size="sm" onClick={() => toggle(alert)}>
-                      {alert.isActive ? t('alerts.pause') : t('alerts.activate')}
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => toggleAlert(pair.buyAlert)}>
+                      {pair.buyAlert.isActive ? t('alerts.pause') : t('alerts.activate')}
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(alert.id)}>
+                    <Button variant="ghost" size="icon" onClick={() => removePair(pair.id)}>
                       <Trash2 className="h-4 w-4 text-red-400" />
                     </Button>
                   </div>
                 </div>
               </CardHeader>
               {isOpen && (
-                <CardContent className="space-y-4 border-t border-border pt-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>{t('alerts.webhookUrl')}</Label>
-                      <CopyButton value={alert.webhookUrl} label={t('alerts.copyUrl')} />
-                    </div>
-                    <code className="block overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs">
-                      {alert.webhookUrl}
-                    </code>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>{t('alerts.tvMessage')}</Label>
-                      <CopyButton
-                        value={JSON.stringify(alert.messageJson, null, 2)}
-                        label={t('alerts.copyJson')}
-                      />
-                    </div>
-                    <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs">
-                      {JSON.stringify(alert.messageJson, null, 2)}
-                    </pre>
-                  </div>
+                <CardContent className="grid gap-4 border-t border-border pt-4 lg:grid-cols-2">
+                  <WebhookBlock alert={pair.buyAlert} label={t('alerts.buyWebhook')} />
+                  <WebhookBlock alert={pair.sellAlert} label={t('alerts.sellWebhook')} />
                 </CardContent>
               )}
             </Card>
           );
         })}
       </div>
+
+      {standaloneAlerts.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">{t('alerts.listTitle')}</h2>
+          {standaloneAlerts.map((alert) => (
+            <Card key={alert.id}>
+              <CardHeader className="pb-3">
+                <div className="flex justify-between gap-4">
+                  <CardTitle className="text-base">{alert.name}</CardTitle>
+                  <Button variant="ghost" size="icon" onClick={() => removeAlert(alert.id)}>
+                    <Trash2 className="h-4 w-4 text-red-400" />
+                  </Button>
+                </div>
+                <CardDescription>
+                  {alert.symbol} · {alert.side} · {alert.riskValue} USDT
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

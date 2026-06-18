@@ -13,6 +13,7 @@ import {
   fetchPublicPrice,
   fetchSpotUsdtSymbols,
   resolvePriceFeedTestnet,
+  isSymbolTradableOnBinanceTr,
   BinanceExchange,
 } from '@tradehook/shared';
 
@@ -437,16 +438,46 @@ export class BinanceService {
 
 
   async searchSymbols(userId: string, query?: string): Promise<string[]> {
-
     const account = await this.prisma.binanceAccount.findUnique({
       where: { userId },
     });
     const exchange = account?.exchange ?? 'GLOBAL';
     const useTestnet =
-      account?.useTestnet ?? loadConfig().binanceUseTestnet;
+      account?.exchange === 'TR'
+        ? false
+        : (account?.useTestnet ?? loadConfig().binanceUseTestnet);
 
-    return fetchSpotUsdtSymbols({ useTestnet, exchange }, query);
+    // TR: only Binance TR listings. Global: USDT (+ optional TRY from binance.tr).
+    const includeTrTry = exchange !== 'TR';
 
+    try {
+      return await fetchSpotUsdtSymbols(
+        { useTestnet, exchange, includeTrTry },
+        query,
+      );
+    } catch {
+      if (exchange === 'TR') return [];
+      return fetchSpotUsdtSymbols(
+        { useTestnet: false, exchange: 'GLOBAL', includeTrTry: true },
+        query,
+      ).catch(() => []);
+    }
+  }
+
+  /** Rejects symbols that are not listed on Binance TR when the user uses TR API keys. */
+  async assertSymbolTradable(userId: string, symbol: string): Promise<void> {
+    const account = await this.prisma.binanceAccount.findUnique({
+      where: { userId },
+    });
+    if (!account || account.exchange !== 'TR') return;
+
+    const upper = symbol.toUpperCase();
+    const ok = await isSymbolTradableOnBinanceTr(upper);
+    if (!ok) {
+      throw new BadRequestException(
+        `${upper} Binance TR'de listelenmiyor. Arama listesinden bir sembol seçin.`,
+      );
+    }
   }
 
 

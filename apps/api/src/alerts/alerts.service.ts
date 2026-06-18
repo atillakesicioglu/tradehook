@@ -18,7 +18,7 @@ import { loadConfig } from '../config/configuration';
 
 import { BinanceService } from '../binance/binance.service';
 
-import { CreateAlertDto, UpdateAlertDto } from './dto/alert.dto';
+import { CreateAlertDto, CreateAlertPairDto, UpdateAlertDto } from './dto/alert.dto';
 
 
 
@@ -80,11 +80,13 @@ export class AlertsService {
 
   async create(userId: string, dto: CreateAlertDto) {
 
-    await this.assertRiskWithinBalance(userId, dto.riskValue);
+    if (dto.riskType !== 'FULL_POSITION') {
+      await this.assertRiskWithinBalance(userId, dto.riskValue);
+    }
 
     this.validateSlTp(dto);
 
-
+    await this.binance.assertSymbolTradable(userId, dto.symbol);
 
     const alert = await this.prisma.alert.create({
 
@@ -142,17 +144,127 @@ export class AlertsService {
 
 
 
+  async createPair(userId: string, dto: CreateAlertPairDto) {
+
+    await this.assertRiskWithinBalance(userId, dto.initialUsdt);
+
+    await this.binance.assertSymbolTradable(userId, dto.symbol);
+
+    const symbol = dto.symbol.toUpperCase();
+
+    const buyAlert = await this.prisma.alert.create({
+
+      data: {
+
+        userId,
+
+        name: `${dto.name} (Buy)`,
+
+        symbol,
+
+        side: 'BUY',
+
+        riskType: 'COMPOUND_USDT',
+
+        riskValue: new Prisma.Decimal(dto.initialUsdt),
+
+      },
+
+    });
+
+
+
+    const sellAlert = await this.prisma.alert.create({
+
+      data: {
+
+        userId,
+
+        name: `${dto.name} (Sell)`,
+
+        symbol,
+
+        side: 'SELL',
+
+        riskType: 'FULL_POSITION',
+
+        riskValue: new Prisma.Decimal(0),
+
+      },
+
+    });
+
+
+
+    const pair = await this.prisma.alertPair.create({
+
+      data: {
+
+        userId,
+
+        name: dto.name,
+
+        symbol,
+
+        initialUsdt: new Prisma.Decimal(dto.initialUsdt),
+
+        buyAlertId: buyAlert.id,
+
+        sellAlertId: sellAlert.id,
+
+      },
+
+      include: { buyAlert: true, sellAlert: true },
+
+    });
+
+
+
+    return this.presentPair(pair);
+
+  }
+
+
+
   async findAll(userId: string) {
 
-    const alerts = await this.prisma.alert.findMany({
+    const pairs = await this.prisma.alertPair.findMany({
 
       where: { userId },
+
+      include: { buyAlert: true, sellAlert: true },
 
       orderBy: { createdAt: 'desc' },
 
     });
 
-    return alerts.map((a) => this.present(a));
+    const pairedIds = new Set(
+
+      pairs.flatMap((p) => [p.buyAlertId, p.sellAlertId]),
+
+    );
+
+    const standalone = await this.prisma.alert.findMany({
+
+      where: {
+
+        userId,
+
+        ...(pairedIds.size > 0 ? { id: { notIn: [...pairedIds] } } : {}),
+
+      },
+
+      orderBy: { createdAt: 'desc' },
+
+    });
+
+    return {
+
+      pairs: pairs.map((p) => this.presentPair(p)),
+
+      alerts: standalone.map((a) => this.present(a)),
+
+    };
 
   }
 
@@ -208,9 +320,45 @@ export class AlertsService {
 
   async remove(userId: string, id: string) {
 
+    const pair = await this.prisma.alertPair.findFirst({
+
+      where: {
+
+        userId,
+
+        OR: [{ buyAlertId: id }, { sellAlertId: id }],
+
+      },
+
+    });
+
+    if (pair) {
+
+      await this.prisma.alertPair.delete({ where: { id: pair.id } });
+
+      return { deleted: true };
+
+    }
+
     await this.getOwned(userId, id);
 
     await this.prisma.alert.delete({ where: { id } });
+
+    return { deleted: true };
+
+  }
+
+
+
+  async removePair(userId: string, pairId: string) {
+
+    const pair = await this.prisma.alertPair.findUnique({ where: { id: pairId } });
+
+    if (!pair) throw new NotFoundException('Strategy not found');
+
+    if (pair.userId !== userId) throw new ForbiddenException();
+
+    await this.prisma.alertPair.delete({ where: { id: pairId } });
 
     return { deleted: true };
 
@@ -363,6 +511,64 @@ export class AlertsService {
       isLocalWebhook,
 
       messageJson,
+
+    };
+
+  }
+
+
+
+  private presentPair(
+
+    pair: {
+
+      id: string;
+
+      name: string;
+
+      symbol: string;
+
+      initialUsdt: Prisma.Decimal;
+
+      compoundUsdt: Prisma.Decimal | null;
+
+      heldQuantity: Prisma.Decimal | null;
+
+      createdAt: Date;
+
+      buyAlert: AlertRecord;
+
+      sellAlert: AlertRecord;
+
+    },
+
+  ) {
+
+    const nextBuyUsdt = Number(pair.compoundUsdt ?? pair.initialUsdt);
+
+    return {
+
+      id: pair.id,
+
+      name: pair.name,
+
+      symbol: pair.symbol,
+
+      initialUsdt: Number(pair.initialUsdt),
+
+      compoundUsdt: pair.compoundUsdt ? Number(pair.compoundUsdt) : null,
+
+      nextBuyUsdt,
+
+      heldQuantity: pair.heldQuantity ? Number(pair.heldQuantity) : null,
+
+      inPosition: pair.heldQuantity != null && Number(pair.heldQuantity) > 0,
+
+      createdAt: pair.createdAt,
+
+      buyAlert: this.present(pair.buyAlert),
+
+      sellAlert: this.present(pair.sellAlert),
 
     };
 
