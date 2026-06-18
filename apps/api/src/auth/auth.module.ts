@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { FirebaseService } from './firebase.service';
+import { AdminGuard } from './admin.guard';
 import { UsersModule } from '../users/users.module';
 
 const config = loadConfig();
@@ -18,8 +19,8 @@ const config = loadConfig();
       signOptions: { expiresIn: config.jwtExpiresIn as `${number}` },
     }),
   ],
-  providers: [AuthService, AuthGuard, FirebaseService],
+  providers: [AuthService, AuthGuard, AdminGuard, FirebaseService],
   controllers: [AuthController],
-  exports: [AuthGuard, FirebaseService, JwtModule],
+  exports: [AuthGuard, AdminGuard, FirebaseService, JwtModule],
 })
 export class AuthModule {}

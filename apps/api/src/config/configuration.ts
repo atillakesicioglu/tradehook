@@ -19,6 +19,8 @@ export interface AppConfig {
     clientEmail?: string;
     privateKey?: string;
   };
+  /** Comma-separated emails allowed to access /admin endpoints. */
+  adminEmails: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -43,5 +45,6 @@ export function loadConfig(): AppConfig {
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     },
+    adminEmails: process.env.ADMIN_EMAILS ?? '',
   };
 }

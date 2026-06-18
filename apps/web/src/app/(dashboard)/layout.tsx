@@ -9,6 +9,7 @@ import {
   Gauge,
   KeyRound,
   LayoutDashboard,
+  Shield,
   Wallet,
   ListOrdered,
   LogOut,
@@ -80,6 +81,20 @@ export default function DashboardLayout({
               </Link>
             );
           })}
+          {user.isAdmin && (
+            <Link
+              href="/admin"
+              className={cn(
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                pathname === '/admin'
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >
+              <Shield className="h-4 w-4" />
+              {t('nav.admin')}
+            </Link>
+          )}
         </nav>
         <div className="border-t border-border p-3">
           <Button

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import type { FirebaseUser } from '../auth/firebase.service';
+import { isAdminEmail } from '../auth/admin.util';
 
 @Injectable()
 export class UsersService {
@@ -62,6 +63,7 @@ export class UsersService {
       email: user.email,
       name: user.name,
       createdAt: user.createdAt,
+      isAdmin: isAdminEmail(user.email),
       hasBinanceAccount: Boolean(user.binanceAccount),
       subscription: user.subscription
         ? {
