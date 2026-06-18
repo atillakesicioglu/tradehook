@@ -229,8 +229,10 @@ export class BinanceService {
 
       let withdrawalEnabled = false;
 
+      // Binance TR has no apiRestrictions endpoint; account `canWithdraw` is
+      // account-level (usually true for all users), not API key permission.
       if (account.exchange === 'TR') {
-        withdrawalEnabled = info.canWithdraw;
+        withdrawalEnabled = false;
       } else if (account.useTestnet) {
 
         withdrawalEnabled = false;

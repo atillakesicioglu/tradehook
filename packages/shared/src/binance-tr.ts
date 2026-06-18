@@ -128,8 +128,8 @@ export class BinanceTrRestClient {
   }
 
   async getApiRestrictions(): Promise<BinanceApiRestrictions | null> {
-    const info = await this.getAccount();
-    return { enableWithdrawals: info.canWithdraw, enableReading: true };
+    // TR API has no key-permission endpoint; withdrawal is enforced in the UI only.
+    return { enableWithdrawals: false, enableReading: true };
   }
 
   async getPrice(symbol: string): Promise<number> {
